@@ -1,0 +1,253 @@
+---
+title: "HS Comparison Report for `r my_sch$Long_Name`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      warning = FALSE,
+                      message = FALSE,
+                      error = FALSE)
+```
+
+<br>
+
+# About This Report
+
+This is a demonstration of an interactive report that can be produced with custom content in  interactive elements.
+
+This report is generated with the open source R programming language, and the specific code for generating this report is accessible in open source at [this link](https://github.com/chapinhall/sch-dash-demo). In addition to offering transparency, having code in open source invites collaborators to comment and contribute, regardless of institutional affiliation.
+
+These data represent statistics from the 2018-19 School Year, sourced at [this link](https://data.cityofchicago.org/Education/Chicago-Public-Schools-School-Profile-Information-/kh4r-387c) from the [City of Chicago Data Portal](https://data.cityofchicago.org/).
+
+<!-- /!\ Also mention the data source, here and in the readme -->
+
+<br>
+<br>
+
+# Student Body Characteristics
+
+## Comparison vs CPS High School Averages
+
+```{r pair own calculations with CPS}
+my_vs_cps <-
+  bind_rows(melt(my_sch, 
+                 id.vars = "Long_Name",
+                 measure.vars = calc_cols$var,
+                 variable.name = "variable"),
+            hsch_avg %>% mutate(Long_Name = "CPS High School Average")) %>% 
+  merge(calc_cols %>% rename(variable = var),
+        by = "variable") %>% 
+  mutate(Long_Name = factor(Long_Name, 
+                            levels = c(hs, "CPS High School Average")),
+         var_label = factor(var_label, 
+                            levels = calc_cols$var_label))
+```
+
+```{r compare own and cps averages side by side, fig.height = 10}
+ggplot(my_vs_cps,
+       aes(x = Long_Name,
+           y = value,
+           fill = Long_Name)) +
+  geom_bar(stat = "identity",
+           position = "dodge") +
+  geom_text(aes(label = percent(value,
+                                accuracy = 0.1)),
+            vjust = -1,
+            size = 5) +
+  geom_hline(yintercept = 0,
+             color = "black") +
+  scale_fill_manual(name = "",
+                    values = c("#6495ed", "darkgray")) +
+  scale_y_continuous(labels = percent,
+                     #limits = c(0, 1),
+                     expand = expansion(add = c(0, 1.0))) +
+  facet_wrap(~ var_label,
+             ncol = 2
+             #,scales = "free_y"
+             ) +
+  labs(title = "Comparison of Own Student Body Characteristics to CPS High School Average") +
+  theme_minimal() +
+  theme(legend.position = "top",
+        strip.text = element_text(size = 12),
+        plot.title = element_text(hjust = 0,
+                                  size = 14),
+        axis.text.x  = element_blank(),
+        axis.title.x = element_blank(),
+        axis.text.y  = element_blank())
+```
+
+### Table of Average Value Comparisons
+
+```{r}
+hsch_table <- 
+  my_vs_cps %>% 
+  dcast(var_label ~ Long_Name,
+        value.var = "value") %>% 
+  rename(`Student Body Characteristc` = var_label)
+
+datatable(hsch_table,
+          rownames = FALSE,
+          options = list(dom = "t")) %>% 
+  formatPercentage(columns = setdiff(colnames(hsch_table), "Student Body Characteristc"))
+```
+
+
+<br>
+<br>
+
+## Distribution Among CPS High Schools  {.tabset .tabset-pills .tabset-fade}
+
+```{r}
+# hsch_calc_long <- 
+#   hsch_calc %>% 
+#   melt(id.vars = "Long_Name",
+#        measure.vars = calc_cols$var,
+#        variable.name = "var") %>% 
+#   merge(calc_cols,
+#         by = "var") %>% 
+#   .[order(value, 
+#           decreasing = TRUE)]
+# 
+# plot_ly(data = hsch_calc_long,
+#         type = 'bar',
+#         x = ~Long_Name, #~reorder(Long_Name, value),
+#         y = ~value,
+#         orientation = "h",
+#         text = ~percent(value, accuracy = 1),
+#         hoverinfo = 'text',
+#         transforms = list(
+#           list(
+#             type = "filter",
+#             target = ~var_label,
+#             operation = "=",
+#             value = calc_cols$var_label[1]
+#           )
+#         )
+# ) %>% 
+#   layout(
+#     xaxis = list(title = "",
+#                  showticklabels = FALSE),
+#     yaxis = list(title = "",
+#                  tickformat = ".0%"),
+#     updatemenus = list(
+#       list(
+#         y = 1.2,
+#         type = "dropdown",
+#         active = 1,
+#         buttons = 
+#           lapply(calc_cols$var_label, 
+#                  function(x) 
+#                    list(method = "restyle",
+#                         args = list("transforms[0].value", x),
+#                         label = x))
+#       )
+#     )
+#   )
+```
+
+
+```{r produce distribution plots, results = "asis"}
+for (r in 1:nrow(calc_cols)) {
+  my_var       <- calc_cols$var[r]
+  my_var_label <- calc_cols$var_label[r]
+  cat(glue("\n\n### {my_var_label}\n\n"))
+  
+  my_plot <- 
+    ggplot(hsch_calc[j = my_val := get(my_var)],
+           aes(x = reorder(Long_Name, my_val),
+               y = my_val,
+               fill = ifelse(Long_Name == hs,
+                             yes = hs,
+                             no = "Other HSs") %>% 
+                 factor(levels = c(hs, "Other HSs")))) +
+    geom_bar(stat = "identity",
+             position = "dodge") +
+    geom_hline(yintercept = my_sch[j = get(my_var)],
+               color = "#6495ed") +
+    scale_y_continuous(labels = percent,
+                       breaks = sort(c(labeling::extended(range(hsch_calc$my_val, na.rm = TRUE)[1],
+                                                          range(hsch_calc$my_val, na.rm = TRUE)[2], m = 5),
+                                       my_sch[j = get(my_var)]))) +
+    scale_fill_manual(name = "",
+                      breaks = c("Other HSs", hs),
+                      values = c("darkgray", "#6495ed")) +
+    labs(title = glue("Distribution of % {my_var_label} Across CPS High Schools"),
+         subtitle = glue("{hs} is highlighted in blue"),
+         x = glue("CPS High Schools in Order"),
+         y = "") +
+    coord_flip() +
+    theme_minimal() +
+    theme(legend.position = "bottom",
+          axis.text.y = element_blank(),
+          panel.grid = element_blank())
+  # /!\ Add annotation of CPS average
+  print(my_plot)
+    
+  cat("\n\n")
+}
+```
+
+<br>
+<br>
+
+# Map
+
+The map below shows all CPS High Schools as dots. Clicking the dots will produce a pop-up with details. `r hs` is highlighted in blue.
+
+<!-- To dos: 
+2. add a crosstalk feature to select down by a given feature. See e.g. https://plotly-r.com/client-side-linking.html
+3. build a layer selection, perhaps mutually exclusive, by color of relevant value -- https://stackoverflow.com/questions/50641092/r-leaflet-map-change-legends-based-on-selected-layer-group
+-->
+
+```{r prep map data}
+hsch_map <- 
+  hsch_calc %>% 
+  mutate(popup = paste(sep = "<br>",
+                       paste0("<b>", Long_Name, "</b>"),
+                       paste0("% Low Income: ",        percent(pct_lowinc, accuracy = 1)),
+                       paste0("% Special Education: ", percent(pct_sped,   accuracy = 1)),
+                       paste0("% English Learners: ",  percent(pct_ell,    accuracy = 1))))
+```
+
+
+```{r produce map}
+my_radius <- 8
+leaflet(hsch_map) %>% 
+  addProviderTiles(providers$CartoDB.Positron) %>% 
+  addCircleMarkers(lng = ~School_Longitude, 
+                   lat = ~School_Latitude,
+                   label = ~Long_Name,
+                   radius = my_radius,
+                   stroke = FALSE,
+                   color = "black",
+                   labelOptions = labelOptions(noHide = FALSE, 
+                                               textOnly = FALSE),
+                   options = markerOptions(riseOnHover = TRUE),
+                   popup = ~popup) %>% 
+  addCircleMarkers(lng = my_sch$School_Longitude, 
+                   lat = my_sch$School_Latitude,
+                   label = ~my_sch$Long_Name,
+                   stroke = FALSE,
+                   color = "#6495ed",
+                   radius = my_radius * 1.5,
+                   labelOptions = labelOptions(noHide = FALSE, 
+                                               textOnly = FALSE),
+                   options = markerOptions(riseOnHover = TRUE),
+                   popup = ~popup) %>% 
+  setView(lng = my_sch$School_Longitude,
+          lat = my_sch$School_Latitude,
+          zoom = 12)
+```
+
+<br>
+<br>
+
+# Questions/Comments?
+
+Write us at [nmader@chapinhall.org](mailto:nmader@chapinhall.org). Find the data and code for this project in [this GitHub repository](https://github.com/chapinhall/sch-dash-demo).
